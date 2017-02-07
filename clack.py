@@ -2,22 +2,25 @@
 
 from slacker import Slacker
 from sys import argv, stdin, stdout, stderr
+from multiprocessing import Pool
+from time import sleep
 import os
 import select
 import curses
-from time import sleep
 
 #setup default variables 
 variables = dict()
 variables['prompt'] = "clack>"
-variables["start_channel"] = '#general'
-variables["username"] = "user!"
+prompt_start = (0, len(variables['prompt']))
+variables["channel"] = '#general'
+variables["username"] = None
+variables["logfile"] = "clack.log"
 
-#check cmd args
-if len(argv) > 1:
-    username = argv[1]
-else:
-    username = "clackbot"
+#check args
+#if len(argv) > 1:
+#    username = argv[1]
+#else:
+#    username = "clackbot"
 
 try:
     config = open(os.path.join(os.path.expanduser('~'), ".clackrc"))
@@ -55,7 +58,6 @@ def clack(screen):
         return userlist
 
     def refresh_channels(scr, offset = 0):
-
         response = slack.channels.list()
         channels = response.body['channels']
 
@@ -81,12 +83,19 @@ def clack(screen):
         return False
 
     slack = Slacker(variables["apikey"])
-    running = True
 
+    #init messaging 
+    response = slack.rtm.start()
+    variables['teamname'] = response.body['team']['name']
+    userlist = response.body['users']
+    chanlist = response.body['channels']
+    grouplist = response.body['groups']
+    botlist = response.body['bots']
+
+    #draw initial windows
     screen_height = screen.getmaxyx()[0]
     screen_width = screen.getmaxyx()[1]
 
-    #draw initial windows
     left_panel = screen.derwin(screen_height - 1, screen_width / 5, 1,1)
     left_panel.border(0)
     left_panel.noutrefresh()
@@ -103,35 +112,58 @@ def clack(screen):
     input_panel.border(0)
     input_panel.noutrefresh()
 
-    output_win = screen.derwin(left_panel.getmaxyx()[0] - input_panel.getmaxyx()[0], \
+    loc = input_panel.getmaxyx()
+
+    text_input = input_panel.derwin(loc[0] - 2,loc[1] - 2, 1,1)
+    prompt_text = variables['prompt']
+    text_input.addstr(0,0,prompt_text)
+    text_input.noutrefresh()
+
+    output_panel = screen.derwin(left_panel.getmaxyx()[0] - input_panel.getmaxyx()[0], \
             screen_width - left_panel.getmaxyx()[1] - 1, 1, left_panel.getmaxyx()[1] + 1)
-    output_win.border(0)
-    output_win.noutrefresh()
+    output_panel.border(0)
+    output_panel.noutrefresh()
+
+    loc = output_panel.getmaxyx()
+    text_output = output_panel.derwin(loc[0] - 2, loc[1] - 2, 1,1)
+    text_output.noutrefresh()
 
     curses.doupdate()
 
+    running = True
     while running:
         chanlist = refresh_channels(channel_panel)
         userlist = refresh_users(user_panel)
 
         curses.echo()
-        msg = input_panel.getstr(1,1).rstrip();
+        msg = text_input.getstr(prompt_start[0],prompt_start[1]).rstrip();
         curses.cbreak()
 
-        input_panel.clear()
-        input_panel.border(0)
-        input_panel.refresh()
+        text_input.clear()
+        text_input.addstr(0,0,prompt_text)
+        text_input.move(prompt_start[0],prompt_start[1])
+        text_input.refresh()
 
-        if msg[0] == '/':
-            if msg[1:5] == "quit":
-                running = False
-            elif msg[1:3] == "dm":
-        else:
-            output_win.addstr(1,1,variables["username"] + ">" + msg)
-            output_win.refresh()
+        if len(msg):
+            if msg[0] == '/':
+                cmd = msg[1:].split(' ')
+                if cmd[0] == "quit":
+                    running = False
+                elif cmd[0] == "dm":
+                    send_dm(cmd[1],cmd[2:])
+                elif cmd[0] == "sw":
+                    channel = cmd[1]
+                    if channel[0] != '#':
+                        channel = "#".append(channel)
+                    variables["channel"] = channel
+            else:
+                slack.chat.post_message(variables["channel"], msg)
+                text_output.addstr(1,1,variables["username"] + ">" + msg)
+                text_output.refresh()
 
-        input_panel.move(1,1)
 
+    log.close()
     return 0
 
 curses.wrapper(clack)
+
