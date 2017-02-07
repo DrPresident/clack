@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+which virtualenv > /dev/null
+ret=$?
+
+if [[ $ret -ne 0 ]]
+then
+    pip install virtualenv  
+fi 
+
+virtualenv .
+./bin/pip install -r requirements.txt
