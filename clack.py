@@ -72,11 +72,13 @@ def clack(screen):
         scr.noutrefresh()
         return chanlist
 
-    def update_msgs(scr, msg):
+    def event_handler(event):
+        return
 
-        cap = scr.getmaxyx()[0] - 1
-        for m in range(1, cap):
-            scr.addstr(m, 1, msgs[m])
+    def add_msg(scr, user, msg):
+        scr.scroll()
+        scr.addstr(scr.getmaxyx()[0] - 1, 0, user + ':')
+        scr.addstr(scr.getmaxyx()[0] - 1, len(user + ':'), msg)
         scr.noutrefresh()
 
     def send_dm(user, msg):
@@ -96,6 +98,9 @@ def clack(screen):
     screen_height = screen.getmaxyx()[0]
     screen_width = screen.getmaxyx()[1]
 
+    if curses.has_colors():
+        curses.init_color(0,0,250,400)
+
     left_panel = screen.derwin(screen_height - 1, screen_width / 5, 1,1)
     left_panel.border(0)
     left_panel.noutrefresh()
@@ -114,8 +119,8 @@ def clack(screen):
 
     loc = input_panel.getmaxyx()
 
-    text_input = input_panel.derwin(loc[0] - 2,loc[1] - 2, 1,1)
     prompt_text = variables['prompt']
+    text_input = input_panel.derwin(loc[0] - 2,loc[1] - 2, 1,1)
     text_input.addstr(0,0,prompt_text)
     text_input.noutrefresh()
 
@@ -126,6 +131,7 @@ def clack(screen):
 
     loc = output_panel.getmaxyx()
     text_output = output_panel.derwin(loc[0] - 2, loc[1] - 2, 1,1)
+    text_output.scrollok(True)
     text_output.noutrefresh()
 
     curses.doupdate()
@@ -152,17 +158,19 @@ def clack(screen):
                 elif cmd[0] == "dm":
                     send_dm(cmd[1],cmd[2:])
                 elif cmd[0] == "sw":
-                    channel = cmd[1]
-                    if channel[0] != '#':
-                        channel = "#".append(channel)
-                    variables["channel"] = channel
+                    win = cmd[1]
+                    if [0] == '#':
+                        variables["channel"] = channel
+                    else:
+                        user = win
+
             else:
                 slack.chat.post_message(variables["channel"], msg)
-                text_output.addstr(1,1,variables["username"] + ">" + msg)
+                add_msg(text_output, variables["username"], msg)
                 text_output.refresh()
 
 
-    log.close()
+    #log.close()
     return 0
 
 curses.wrapper(clack)
