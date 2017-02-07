@@ -13,7 +13,7 @@ variables = dict()
 variables['prompt'] = "clack>"
 prompt_start = (0, len(variables['prompt']))
 variables["channel"] = '#general'
-variables["username"] = None
+variables["username"] = "Clack"
 variables["logfile"] = "clack.log"
 
 #check args
@@ -75,13 +75,32 @@ def clack(screen):
     def event_handler(event):
         return
 
+    def setup_chan(scr, chan):
+        if chan[0] != '#':
+            chan = '#' + chan
+        response = slack.channels.join(chan)
+
+        if(response.body['ok'] == True):
+            hresponse = slack.channels.history(response.body['channel']['name'])
+            if hresponse.body['ok'] == True:
+                variables["channel"] = response.body['channel']['name']
+                msgs = hresponse.body['messages']
+
+                for msg in msgs:
+                    scr.scroll()
+                    scr.addstr(scr.getmaxyx()[0] - 1, 0, msg['user'] + ':')
+                    scr.addstr(scr.getmaxyx()[0] - 1, len(msg['user']) + 1, msg['text'])
+                    add_msg(text_output, msg['user'], msg['text'])
+
+                scr.noutrefresh()
+        
     def add_msg(scr, user, msg):
         scr.scroll()
         scr.addstr(scr.getmaxyx()[0] - 1, 0, user + ':')
         scr.addstr(scr.getmaxyx()[0] - 1, len(user + ':'), msg)
         scr.noutrefresh()
 
-    def send_dm(user, msg):
+    def send_dm(user, msg=None):
         return False
 
     slack = Slacker(variables["apikey"])
@@ -89,6 +108,7 @@ def clack(screen):
     #init messaging 
     response = slack.rtm.start()
     variables['teamname'] = response.body['team']['name']
+    variables['username'] = response.body['self']['name']
     userlist = response.body['users']
     chanlist = response.body['channels']
     grouplist = response.body['groups']
@@ -98,8 +118,8 @@ def clack(screen):
     screen_height = screen.getmaxyx()[0]
     screen_width = screen.getmaxyx()[1]
 
-    if curses.has_colors():
-        curses.init_color(0,0,250,400)
+    #if curses.has_colors():
+    #    curses.init_color(0,0,0,0)
 
     left_panel = screen.derwin(screen_height - 1, screen_width / 5, 1,1)
     left_panel.border(0)
@@ -153,10 +173,20 @@ def clack(screen):
         if len(msg):
             if msg[0] == '/':
                 cmd = msg[1:].split(' ')
-                if cmd[0] == "quit":
+
+                #variable assignment
+                if "=" in cmd and len(cmd) == 3:
+                    variables[cmd[0]] = cmd[2]
+                #commands
+                elif cmd[0] == "quit":
                     running = False
-                elif cmd[0] == "dm":
-                    send_dm(cmd[1],cmd[2:])
+
+                elif cmd[0] == "dm" and len(cmd) >= 2:
+                    if len(cmd) >= 3:
+                        send_dm(cmd[1],cmd[2:])
+                    else:
+                        variables["channel"] = "user:" + cmd[1]
+
                 elif cmd[0] == "sw":
                     win = cmd[1]
                     if [0] == '#':
@@ -164,13 +194,29 @@ def clack(screen):
                     else:
                         user = win
 
+                elif cmd[0] == "join" and len(cmd) >= 2:
+                    if cmd[1][0] != '#':
+                        cmd[1] = '#' + cmd[1]
+                    response = slack.channels.join(variables["username"])
+
+                    if(response.body['ok'] == True):
+                        hresponse = slack.channels.history(response.body['channel']['name'])
+                        if hresponse.body['ok'] == True:
+                            variables["channel"] = response.body['channel']['name']
+                            msgs = hresponse.body['messages']
+
+
+                elif cmd[0] == "leave":
+                    continue
+                elif cmd[0] == "kick":
+                    continue
+                elif cmd[0] == "topic":
+                    continue
+
             else:
                 slack.chat.post_message(variables["channel"], msg)
                 add_msg(text_output, variables["username"], msg)
-                text_output.refresh()
 
-
-    #log.close()
     return 0
 
 curses.wrapper(clack)
