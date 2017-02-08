@@ -61,7 +61,7 @@ def clack(screen):
         if chan[0] != '#':
             chan = '#' + chan
         response = slack.api_call("channels.info",channel=chan)
-        log.write("channels.join: " + chan + "\n" + str(response))
+        log.write("channels.info: " + chan + "\n" + str(response))
 
         if(response['ok'] == True):
             hresponse = slack.api_call("channels.history",
@@ -242,8 +242,8 @@ def clack(screen):
                 if response['ok'] == True:
                     add_msg(text_output, variables["username"], msg)
 
-    exit(0)
+    return 0
     log.close()
 
 curses.wrapper(clack)
-
+exit(0)
