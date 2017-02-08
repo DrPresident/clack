@@ -7,6 +7,8 @@ from time import sleep
 import os
 import select
 import curses
+import trollius
+from websocket import create_connection
 
 #setup default variables 
 variables = dict()
@@ -15,12 +17,6 @@ prompt_start = (0, len(variables['prompt']))
 variables["channel"] = '#general'
 variables["username"] = "Clack"
 variables["logfile"] = "clack.log"
-
-#check args
-#if len(argv) > 1:
-#    username = argv[1]
-#else:
-#    username = "clackbot"
 
 try:
     config = open(os.path.join(os.path.expanduser('~'), ".clackrc"))
@@ -107,6 +103,12 @@ def clack(screen):
 
     #init messaging 
     response = slack.rtm.start()
+    #connect to rtm
+    sock = create_connection(response.body['url'])
+    s = sock.read() 
+    print s
+    exit(0)
+
     variables['teamname'] = response.body['team']['name']
     variables['username'] = response.body['self']['name']
     userlist = response.body['users']
@@ -118,8 +120,8 @@ def clack(screen):
     screen_height = screen.getmaxyx()[0]
     screen_width = screen.getmaxyx()[1]
 
-    #if curses.has_colors():
-    #    curses.init_color(0,0,0,0)
+    if curses.has_colors() and curses.can_change_color():
+        curses.init_color(0,0,300,500)
 
     left_panel = screen.derwin(screen_height - 1, screen_width / 5, 1,1)
     left_panel.border(0)
@@ -205,7 +207,6 @@ def clack(screen):
                             variables["channel"] = response.body['channel']['name']
                             msgs = hresponse.body['messages']
 
-
                 elif cmd[0] == "leave":
                     continue
                 elif cmd[0] == "kick":
@@ -216,6 +217,8 @@ def clack(screen):
             else:
                 slack.chat.post_message(variables["channel"], msg)
                 add_msg(text_output, variables["username"], msg)
+
+    sock.close()
 
     return 0
 
