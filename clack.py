@@ -1,14 +1,13 @@
 #!./bin/python
 
-from slacker import Slacker
+from slackclient import SlackClient
 from sys import argv, stdin, stdout, stderr
 from multiprocessing import Pool
 from time import sleep
 import os
 import select
 import curses
-import trollius
-from websocket import create_connection
+#from websocket import create_connection
 
 #setup default variables 
 variables = dict()
@@ -16,7 +15,7 @@ variables['prompt'] = "clack>"
 prompt_start = (0, len(variables['prompt']))
 variables["channel"] = '#general'
 variables["username"] = "Clack"
-variables["logfile"] = "clack.log"
+variables["logfile"] = "run.log"
 
 try:
     config = open(os.path.join(os.path.expanduser('~'), ".clackrc"))
@@ -39,8 +38,8 @@ if not variables.has_key("apikey"):
 def clack(screen):
 
     def refresh_users(scr, offset = 0):
-        response = slack.users.list()
-        users = response.body['members']
+        response = slack.api_call("users.list")
+        users = response['members']
 
         userlist = list()
         l = 0
@@ -54,8 +53,8 @@ def clack(screen):
         return userlist
 
     def refresh_channels(scr, offset = 0):
-        response = slack.channels.list()
-        channels = response.body['channels']
+        response = slack.api_call("channels.list")
+        channels = response['channels']
 
         chanlist = list()
         l = 0
@@ -74,13 +73,13 @@ def clack(screen):
     def setup_chan(scr, chan):
         if chan[0] != '#':
             chan = '#' + chan
-        response = slack.channels.join(chan)
+        response = slack.api_call("channels.join",channel=chan)
 
-        if(response.body['ok'] == True):
-            hresponse = slack.channels.history(response.body['channel']['name'])
-            if hresponse.body['ok'] == True:
-                variables["channel"] = response.body['channel']['name']
-                msgs = hresponse.body['messages']
+        if(response['ok'] == True):
+            hresponse = slack.api_call("channels.history",channel=response['channel']['name'])
+            if hresponse['ok'] == True:
+                variables["channel"] = response['channel']['name']
+                msgs = hresponse['messages']
 
                 for msg in msgs:
                     scr.scroll()
@@ -99,22 +98,25 @@ def clack(screen):
     def send_dm(user, msg=None):
         return False
 
-    slack = Slacker(variables["apikey"])
+    slack = SlackClient(variables["apikey"])
+    log = open(variables["logfile"], "w")
 
     #init messaging 
-    response = slack.rtm.start()
+    #response = slack.rtm.start()
     #connect to rtm
-    sock = create_connection(response.body['url'])
-    s = sock.read() 
-    print s
-    exit(0)
+    #sock = create_connection(response['url'])
+    #s = sock.read() 
 
-    variables['teamname'] = response.body['team']['name']
-    variables['username'] = response.body['self']['name']
-    userlist = response.body['users']
-    chanlist = response.body['channels']
-    grouplist = response.body['groups']
-    botlist = response.body['bots']
+    response = slack.api_call("rtm.start")
+    if not slack.rtm_connect():
+        log.write("Error: could not connect to rtm")
+
+    variables['teamname'] = response['team']['name']
+    variables['username'] = response['self']['name']
+    userlist = response['users']
+    chanlist = response['channels']
+    grouplist = response['groups']
+    botlist = response['bots']
 
     #draw initial windows
     screen_height = screen.getmaxyx()[0]
@@ -199,13 +201,14 @@ def clack(screen):
                 elif cmd[0] == "join" and len(cmd) >= 2:
                     if cmd[1][0] != '#':
                         cmd[1] = '#' + cmd[1]
-                    response = slack.channels.join(variables["username"])
+                    response = slack.api_call("channels.join", name=variables["username"])
 
-                    if(response.body['ok'] == True):
-                        hresponse = slack.channels.history(response.body['channel']['name'])
-                        if hresponse.body['ok'] == True:
-                            variables["channel"] = response.body['channel']['name']
-                            msgs = hresponse.body['messages']
+                    if(response['ok'] == True):
+                        hresponse = slack.api_call("channels.history", 
+                                channel=response['channel']['name'])
+                        if hresponse['ok'] == True:
+                            variables["channel"] = response['channel']['name']
+                            msgs = hresponse['messages']
 
                 elif cmd[0] == "leave":
                     continue
@@ -215,10 +218,13 @@ def clack(screen):
                     continue
 
             else:
-                slack.chat.post_message(variables["channel"], msg)
+                slack.api_call("chat.postMessage", 
+                        channel=variables["channel"], 
+                        text=msg)
                 add_msg(text_output, variables["username"], msg)
 
-    sock.close()
+    #sock.close()
+    log.close()
 
     return 0
 
