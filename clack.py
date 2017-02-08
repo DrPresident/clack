@@ -7,7 +7,6 @@ from time import sleep
 import os
 import select
 import curses
-#from websocket import create_connection
 
 #setup default variables 
 variables = dict()
@@ -39,31 +38,22 @@ def clack(screen):
 
     def refresh_users(scr, offset = 0):
         response = slack.api_call("users.list")
-        users = response['members']
+        userlist = response['members']
 
-        userlist = list()
-        l = 0
-        for user in users:
-            userlist.append(user['name'])
-            l += 1
         scr.addstr(1, 1, "Users")
-        for u in range(offset, l):
-            scr.addstr(u + 3, 1, "  " + userlist[u])
+        for u in range(offset, len(userlist)):
+            scr.addstr(u + 2, 1, "  " + userlist[u]['name'])
         scr.noutrefresh()
+
         return userlist
 
     def refresh_channels(scr, offset = 0):
         response = slack.api_call("channels.list")
-        channels = response['channels']
+        chanlist = response['channels']
 
-        chanlist = list()
-        l = 0
-        for chan in channels:
-            chanlist.append(chan['name'])
-            l += 1
         scr.addstr(1, 1, "Channels")
-        for c in range(offset,l):
-            scr.addstr(c + 3, 1, "  #" + chanlist[c])
+        for c in range(offset,len(chanlist)):
+            scr.addstr(c + 2, 1, "  #" + chanlist[c]['name'])
         scr.noutrefresh()
         return chanlist
 
@@ -73,19 +63,24 @@ def clack(screen):
     def setup_chan(scr, chan):
         if chan[0] != '#':
             chan = '#' + chan
-        response = slack.api_call("channels.join",channel=chan)
+        response = slack.api_call("channels.info",channel=chan)
+        log.write("channels.join: " + chan + "\n" + str(response))
 
         if(response['ok'] == True):
-            hresponse = slack.api_call("channels.history",channel=response['channel']['name'])
+            hresponse = slack.api_call("channels.history",
+                    channel=response['channel']['name'])
+            log.write("channels.history: " + chan + "\n" + str(hresponse))
             if hresponse['ok'] == True:
                 variables["channel"] = response['channel']['name']
                 msgs = hresponse['messages']
+                log.write(msgs + '\n')
 
                 for msg in msgs:
                     scr.scroll()
                     scr.addstr(scr.getmaxyx()[0] - 1, 0, msg['user'] + ':')
-                    scr.addstr(scr.getmaxyx()[0] - 1, len(msg['user']) + 1, msg['text'])
-                    add_msg(text_output, msg['user'], msg['text'])
+                    scr.addstr(scr.getmaxyx()[0] - 1, len(msg['user']) + 1, 
+                            msg['text'])
+                    #add_msg(text_output, msg['user'], msg['text'])
 
                 scr.noutrefresh()
         
@@ -98,21 +93,33 @@ def clack(screen):
     def send_dm(user, msg=None):
         return False
 
+    def rtm_update(scr, userlist):
+        events = slack.rtm_read()
+        for event in events:
+            log.write(str(event) + '\n')
+            if event['type'] == "hello":
+                continue
+            elif event['type'] == "message":
+                for u in userlist:
+                    if u['id'] == event['user']:
+                        add_msg(scr, u['name'], event['text'])
+                        break
+            else:
+                log.write("unhandled event: " + event['type'] + '\n')
+
     slack = SlackClient(variables["apikey"])
     log = open(variables["logfile"], "w")
 
     #init messaging 
-    #response = slack.rtm.start()
-    #connect to rtm
-    #sock = create_connection(response['url'])
-    #s = sock.read() 
 
     response = slack.api_call("rtm.start")
     if not slack.rtm_connect():
         log.write("Error: could not connect to rtm")
+        exit(1)
 
     variables['teamname'] = response['team']['name']
     variables['username'] = response['self']['name']
+    log.write(response['self']['name'])
     userlist = response['users']
     chanlist = response['channels']
     grouplist = response['groups']
@@ -158,6 +165,8 @@ def clack(screen):
     text_output.scrollok(True)
     text_output.noutrefresh()
 
+    setup_chan(text_output, variables["channel"])
+
     curses.doupdate()
 
     running = True
@@ -165,6 +174,7 @@ def clack(screen):
         chanlist = refresh_channels(channel_panel)
         userlist = refresh_users(user_panel)
 
+        rtm_update(text_output, userlist)
         curses.echo()
         msg = text_input.getstr(prompt_start[0],prompt_start[1]).rstrip();
         curses.cbreak()
