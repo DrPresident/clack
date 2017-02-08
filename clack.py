@@ -2,8 +2,8 @@
 
 from slackclient import SlackClient
 from sys import argv, stdin, stdout, stderr
-from multiprocessing import Pool
 from time import sleep
+from threading import Lock, Thread
 import os
 import select
 import curses
@@ -57,9 +57,6 @@ def clack(screen):
         scr.noutrefresh()
         return chanlist
 
-    def event_handler(event):
-        return
-
     def setup_chan(scr, chan):
         if chan[0] != '#':
             chan = '#' + chan
@@ -80,7 +77,6 @@ def clack(screen):
                     scr.addstr(scr.getmaxyx()[0] - 1, 0, msg['user'] + ':')
                     scr.addstr(scr.getmaxyx()[0] - 1, len(msg['user']) + 1, 
                             msg['text'])
-                    #add_msg(text_output, msg['user'], msg['text'])
 
                 scr.noutrefresh()
         
@@ -88,42 +84,38 @@ def clack(screen):
         scr.scroll()
         scr.addstr(scr.getmaxyx()[0] - 1, 0, user + ':')
         scr.addstr(scr.getmaxyx()[0] - 1, len(user + ':'), msg)
-        scr.noutrefresh()
+        scr.refresh()
 
     def send_dm(user, msg=None):
         return False
 
-    def rtm_update(scr, userlist):
-        events = slack.rtm_read()
-        for event in events:
-            log.write(str(event) + '\n')
-            if event['type'] == "hello":
-                continue
-            elif event['type'] == "message":
-                for u in userlist:
-                    if u['id'] == event['user']:
-                        add_msg(scr, u['name'], event['text'])
-                        break
-            else:
-                log.write("unhandled event: " + event['type'] + '\n')
+    def event_handler(scr, userlist):
+
+        lock = Lock()
+        while True:
+            events = slack.rtm_read()
+
+            for event in events:
+                if event['type'] == "hello":
+                    continue
+                elif event['type'] == "message":
+                    if "user" in event.keys():
+                        key = "user"
+                    else:
+                        key = "username"
+
+                    for u in userlist:
+                        if u['id'] == event[key]:
+                            add_msg(scr, u['name'], event['text'])
+                            break
+                else:
+                    log.write("unhandled event: " + event['type'] + '\n')
 
     slack = SlackClient(variables["apikey"])
     log = open(variables["logfile"], "w")
 
     #init messaging 
 
-    response = slack.api_call("rtm.start")
-    if not slack.rtm_connect():
-        log.write("Error: could not connect to rtm")
-        exit(1)
-
-    variables['teamname'] = response['team']['name']
-    variables['username'] = response['self']['name']
-    log.write(response['self']['name'])
-    userlist = response['users']
-    chanlist = response['channels']
-    grouplist = response['groups']
-    botlist = response['bots']
 
     #draw initial windows
     screen_height = screen.getmaxyx()[0]
@@ -167,6 +159,22 @@ def clack(screen):
 
     setup_chan(text_output, variables["channel"])
 
+    response = slack.api_call("rtm.start")
+    if slack.rtm_connect():
+        event_daemon = Thread(target=event_handler, 
+                args=(text_output, response['users']))
+        event_daemon.start()
+    else:
+        log.write("Error: could not connect to rtm")
+        exit(1)
+
+    variables['teamname'] = response['team']['name']
+    variables['username'] = response['self']['name']
+    userlist = response['users']
+    chanlist = response['channels']
+    grouplist = response['groups']
+    botlist = response['bots']
+
     curses.doupdate()
 
     running = True
@@ -174,7 +182,7 @@ def clack(screen):
         chanlist = refresh_channels(channel_panel)
         userlist = refresh_users(user_panel)
 
-        rtm_update(text_output, userlist)
+        #rtm_update(text_output, userlist)
         curses.echo()
         msg = text_input.getstr(prompt_start[0],prompt_start[1]).rstrip();
         curses.cbreak()
@@ -228,15 +236,14 @@ def clack(screen):
                     continue
 
             else:
-                slack.api_call("chat.postMessage", 
+                response = slack.api_call("chat.postMessage", 
                         channel=variables["channel"], 
                         text=msg)
-                add_msg(text_output, variables["username"], msg)
+                if response['ok'] == True:
+                    add_msg(text_output, variables["username"], msg)
 
-    #sock.close()
+    exit(0)
     log.close()
-
-    return 0
 
 curses.wrapper(clack)
 
