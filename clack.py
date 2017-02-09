@@ -120,7 +120,7 @@ def clack(screen):
     if curses.has_colors() and curses.can_change_color():
         curses.init_color(0,0,300,500)
 
-    left_panel = screen.derwin(screen_height - 1, screen_width / 5, 1,1)
+    left_panel = screen.derwin(screen_height, screen_width / 5, 0,0)
     left_panel.border(0)
     left_panel.noutrefresh()
 
@@ -142,12 +142,24 @@ def clack(screen):
     text_input.addstr(0,0,prompt_text)
     text_input.noutrefresh()
 
-    output_panel = screen.derwin(left_panel.getmaxyx()[0] - input_panel.getmaxyx()[0], \
-            screen_width - left_panel.getmaxyx()[1] - 1, 1, left_panel.getmaxyx()[1] + 1)
+    header_panel = screen.derwin(3,
+            screen_width - left_panel.getmaxyx()[1] - 1,
+            0, left_panel.getmaxyx()[1] + 1)
+    header_panel.border(0)
+    header_panel.noutrefresh()
+
+    text_header = header_panel.derwin(1,header_panel.getmaxyx()[1] - 2,
+        1,1)
+    text_header.noutrefresh()
+
+    output_panel = screen.derwin(screen_height - header_panel.getmaxyx()[0] - input_panel.getmaxyx()[0], 
+            screen_width - left_panel.getmaxyx()[1] - 1, 
+            header_panel.getmaxyx()[0], left_panel.getmaxyx()[1] + 1)
     output_panel.border(0)
     output_panel.noutrefresh()
 
     loc = output_panel.getmaxyx()
+
     text_output = output_panel.derwin(loc[0] - 2, loc[1] - 2, 1,1)
     text_output.scrollok(True)
     text_output.noutrefresh()
@@ -155,20 +167,21 @@ def clack(screen):
     setup_chan(text_output, variables["channel"])
 
     response = slack.api_call("rtm.start")
+    log.write("rtm.start\n" + str(response) + '\n')
     if slack.rtm_connect():
         event_daemon = Thread(target=event_handler, 
                 args=(text_output, response['users']))
+        event_daemon.setDaemon(True)
         event_daemon.start()
+
+        variables['teamname'] = response['team']['name']
+        variables['username'] = response['self']['name']
+        userlist = response['users']
+        chanlist = response['channels']
+        grouplist = response['groups']
+        botlist = response['bots']
     else:
         log.write("Error: could not connect to rtm")
-        exit(1)
-
-    variables['teamname'] = response['team']['name']
-    variables['username'] = response['self']['name']
-    userlist = response['users']
-    chanlist = response['channels']
-    grouplist = response['groups']
-    botlist = response['bots']
 
     curses.doupdate()
 
@@ -198,12 +211,14 @@ def clack(screen):
                 elif cmd[0] == "quit":
                     running = False
 
+                #dm user
                 elif cmd[0] == "dm" and len(cmd) >= 2:
                     if len(cmd) >= 3:
                         send_dm(cmd[1],cmd[2:])
                     else:
                         variables["channel"] = "user:" + cmd[1]
 
+                #switch channel|user
                 elif cmd[0] == "sw":
                     win = cmd[1]
                     if [0] == '#':
@@ -211,34 +226,43 @@ def clack(screen):
                     else:
                         user = win
 
+                #join channel
                 elif cmd[0] == "join" and len(cmd) >= 2:
                     if cmd[1][0] != '#':
                         cmd[1] = '#' + cmd[1]
-                    response = slack.api_call("channels.join", name=variables["username"])
+                    response = slack.api_call("channels.join", 
+                            name=cmd[1])
 
+                    log.write("join " + cmd[1] + '\n' + 
+                            str(response) + '\n')
                     if(response['ok'] == True):
+                        variables["channel"] = response['channel']['name']
                         hresponse = slack.api_call("channels.history", 
-                                channel=response['channel']['name'])
+                                channel = response['channel']['id'])
+                        log.write("hist " + response['channel']['name'] 
+                                + '\n' + str(hresponse) + '\n')
                         if hresponse['ok'] == True:
-                            variables["channel"] = response['channel']['name']
                             msgs = hresponse['messages']
-
+                #leave channel
                 elif cmd[0] == "leave":
                     continue
+                #kick user from channel
                 elif cmd[0] == "kick":
                     continue
+                #change topic of channel
                 elif cmd[0] == "topic":
                     continue
 
             else:
                 response = slack.api_call("chat.postMessage", 
                         channel=variables["channel"], 
-                        text=msg)
+                        text=msg,
+                        as_user=True)
                 if response['ok'] == True:
                     add_msg(text_output, variables["username"], msg)
 
-    return 0
     log.close()
+    return 0
 
 curses.wrapper(clack)
 exit(0)
