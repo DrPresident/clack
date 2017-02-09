@@ -2,10 +2,17 @@
 which virtualenv > /dev/null
 ret=$?
 
-if [[ $ret -ne 0 ]]
+if [[ -n $1 ]]
 then
-    pip install virtualenv  
-fi 
-
-virtualenv .
-./bin/pip install -r requirements.txt
+    if [[ $ret -ne 0 ]]
+    then
+        pip install virtualenv  
+    fi 
+    virtualenv .
+    ./bin/pip install -r requirements.txt
+else
+    if [[ $1 == "install" ]]
+    then
+        cp clack.py ~/.local/bin
+    fi
+fi

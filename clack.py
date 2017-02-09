@@ -1,5 +1,4 @@
 #!./bin/python
-
 from slackclient import SlackClient
 from sys import argv, stdin, stdout, stderr
 from time import sleep
@@ -114,9 +113,6 @@ def clack(screen):
     slack = SlackClient(variables["apikey"])
     log = open(variables["logfile"], "w")
 
-    #init messaging 
-
-
     #draw initial windows
     screen_height = screen.getmaxyx()[0]
     screen_width = screen.getmaxyx()[1]
@@ -135,8 +131,7 @@ def clack(screen):
             left_panel.getmaxyx()[1], left_panel.getmaxyx()[0] / 2, 0)
     user_panel.noutrefresh()
 
-    input_panel = screen.derwin(4, screen_width - left_panel.getmaxyx()[1] - 1, \
-            screen_height - 4, left_panel.getmaxyx()[1] + 1) 
+    input_panel = screen.derwin(4, screen_width - left_panel.getmaxyx()[1] - 1, screen_height - 4, left_panel.getmaxyx()[1] + 1)
     input_panel.border(0)
     input_panel.noutrefresh()
 
