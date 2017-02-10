@@ -3,6 +3,7 @@ from slackclient import SlackClient
 from sys import argv, stdin, stdout, stderr
 from time import sleep
 from threading import Lock, Thread
+from async import Async
 import os
 import select
 import curses
@@ -14,6 +15,7 @@ prompt_start = (0, len(variables['prompt']))
 variables["channel"] = '#general'
 variables["username"] = "Clack"
 variables["logfile"] = "run.log"
+async = Async()
 
 try:
     config = open(os.path.join(os.path.expanduser('~'), ".clackrc"))
@@ -169,10 +171,7 @@ def clack(screen):
     response = slack.api_call("rtm.start")
     log.write("rtm.start\n" + str(response) + '\n')
     if slack.rtm_connect():
-        event_daemon = Thread(target=event_handler, 
-                args=(text_output, response['users']))
-        event_daemon.setDaemon(True)
-        event_daemon.start()
+        async.start_daemon(event_handler, (text_output, response['users']))
 
         variables['teamname'] = response['team']['name']
         variables['username'] = response['self']['name']
@@ -185,12 +184,12 @@ def clack(screen):
 
     curses.doupdate()
 
+    chanlist = refresh_channels(channel_panel)
+    userlist = refresh_users(user_panel)
+
     running = True
     while running:
-        chanlist = refresh_channels(channel_panel)
-        userlist = refresh_users(user_panel)
 
-        #rtm_update(text_output, userlist)
         curses.echo()
         msg = text_input.getstr(prompt_start[0],prompt_start[1]).rstrip();
         curses.cbreak()
@@ -258,8 +257,8 @@ def clack(screen):
                         channel=variables["channel"], 
                         text=msg,
                         as_user=True)
-                if response['ok'] == True:
-                    add_msg(text_output, variables["username"], msg)
+                #if response['ok'] == True:
+                #    add_msg(text_output, variables["username"], msg)
 
     log.close()
     return 0
