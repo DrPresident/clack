@@ -1,0 +1,16 @@
+clack 
+
+A simple curses slack client
+
+depends
+    pip
+    python2.7
+
+install - will install to $HOME/.local/bin/clack, make sure it is in your path
+    ./setup install
+
+freeze - will freeze current dependencies 
+         please do not freeze unused dependencies
+    ./setup freeze
+
+
