@@ -51,11 +51,17 @@ def clack(screen):
     def refresh_channels(scr, offset = 0):
         response = slack.api_call("channels.list")
         chanlist = response['channels']
+        chanids = dict()
+
 
         scr.addstr(1, 1, "Channels")
         for c in range(offset,len(chanlist)):
+            chanids[chanlist[c]['name']] = chanlist[c]['id']
             scr.addstr(c + 2, 1, "  #" + chanlist[c]['name'])
         scr.noutrefresh()
+
+        log.write(str(chanids))
+
         return chanlist
 
     def setup_chan(scr, chan):
