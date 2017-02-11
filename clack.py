@@ -100,15 +100,16 @@ def clack(screen):
                 if event['type'] == "hello":
                     continue
                 elif event['type'] == "message":
-                    if "user" in event.keys():
-                        key = "user"
-                    else:
-                        key = "username"
+                    if event['channel'] == variables['channel']:
+                        if "user" in event.keys():
+                            key = "user"
+                        else:
+                            key = "username"
 
-                    for u in userlist:
-                        if u['id'] == event[key]:
-                            add_msg(scr, u['name'], event['text'])
-                            break
+                        for u in userlist:
+                            if u['id'] == event[key]:
+                                add_msg(scr, u['name'], event['text'])
+                                break
                 else:
                     log.write("unhandled event: " + event['type'] + '\n')
 
