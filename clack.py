@@ -12,7 +12,7 @@ import curses
 variables = dict()
 variables['prompt'] = "clack>"
 prompt_start = (0, len(variables['prompt']))
-variables["channel"] = '#general'
+variables["channel"] = 'general'
 variables["username"] = "Clack"
 variables["logfile"] = "run.log"
 async = Async()
@@ -43,7 +43,8 @@ def clack(screen):
 
         scr.addstr(1, 1, "Users")
         for u in range(offset, len(userlist)):
-            scr.addstr(u + 2, 1, "  " + userlist[u]['name'])
+            userlist[u] = (userlist[u]['name'],userlist[u]['id'])
+            scr.addstr(u + 2, 1, "  " + userlist[u][0])
         scr.noutrefresh()
 
         return userlist
@@ -51,16 +52,15 @@ def clack(screen):
     def refresh_channels(scr, offset = 0):
         response = slack.api_call("channels.list")
         chanlist = response['channels']
-        chanids = dict()
-
 
         scr.addstr(1, 1, "Channels")
-        for c in range(offset,len(chanlist)):
-            chanids[chanlist[c]['name']] = chanlist[c]['id']
-            scr.addstr(c + 2, 1, "  #" + chanlist[c]['name'])
-        scr.noutrefresh()
+        for c in range(offset, len(chanlist)):
+            chanlist[c] = (chanlist[c]['name'],chanlist[c]['id'])
+            scr.addstr(c + 2, 1, "  #" + chanlist[c][0])
+            if chanlist[c][0] == variables['channel']:
+                variables['chanid'] = chanlist[c][1]
 
-        log.write(str(chanids))
+        scr.noutrefresh()
 
         return chanlist
 
@@ -85,8 +85,8 @@ def clack(screen):
                     scr.addstr(scr.getmaxyx()[0] - 1, len(msg['user']) + 1, 
                             msg['text'])
 
-                scr.noutrefresh()
-        
+                    scr.noutrefresh()
+
     def add_msg(scr, user, msg):
         scr.scroll()
         scr.addstr(scr.getmaxyx()[0] - 1, 0, user + ':')
@@ -96,26 +96,30 @@ def clack(screen):
     def send_dm(user, msg=None):
         return False
 
-    def event_handler(scr, userlist):
+    def event_handler(scr):
 
-        lock = Lock()
+        chanlist = refresh_channels(channel_panel)
+        userlist = refresh_users(user_panel)
+
         while True:
             events = slack.rtm_read()
-
             for event in events:
+                log.write("event " + str(event['type']) + '\n')
                 if event['type'] == "hello":
                     continue
                 elif event['type'] == "message":
-                    if event['channel'] == variables['channel']:
+                    log.write('channel ' + event['channel'] + ' ' + variables['chanid'] + '\n')
+                    if event['channel'] == variables['chanid']:
                         if "user" in event.keys():
                             key = "user"
                         else:
                             key = "username"
 
                         for u in userlist:
-                            if u['id'] == event[key]:
-                                add_msg(scr, u['name'], event['text'])
+                            if u[1] == event[key]:
+                                add_msg(scr, u[0], event['text'])
                                 break
+                        break
                 else:
                     log.write("unhandled event: " + event['type'] + '\n')
 
@@ -136,11 +140,13 @@ def clack(screen):
     channel_panel = left_panel.derwin(left_panel.getmaxyx()[0] / 2, left_panel.getmaxyx()[1], 0,0) 
     channel_panel.noutrefresh()
 
+
     user_panel = left_panel.derwin((left_panel.getmaxyx()[0] / 2 + left_panel.getmaxyx()[0] % 2),\
             left_panel.getmaxyx()[1], left_panel.getmaxyx()[0] / 2, 0)
     user_panel.noutrefresh()
 
-    input_panel = screen.derwin(4, screen_width - left_panel.getmaxyx()[1] - 1, screen_height - 4, left_panel.getmaxyx()[1] + 1)
+    input_panel = screen.derwin(4, screen_width - left_panel.getmaxyx()[1] - 1, 
+            screen_height - 4, left_panel.getmaxyx()[1] + 1)
     input_panel.border(0)
     input_panel.noutrefresh()
 
@@ -157,8 +163,7 @@ def clack(screen):
     header_panel.border(0)
     header_panel.noutrefresh()
 
-    text_header = header_panel.derwin(1,header_panel.getmaxyx()[1] - 2,
-        1,1)
+    text_header = header_panel.derwin(1,header_panel.getmaxyx()[1] - 2, 1, 1)
     text_header.noutrefresh()
 
     output_panel = screen.derwin(screen_height - header_panel.getmaxyx()[0] - input_panel.getmaxyx()[0], 
@@ -177,22 +182,17 @@ def clack(screen):
 
     response = slack.api_call("rtm.start")
     log.write("rtm.start\n" + str(response) + '\n')
-    if slack.rtm_connect():
-        async.start_daemon(event_handler, (text_output, response['users']))
 
+    if slack.rtm_connect():
+        async.start_daemon(event_handler, [text_output])
         variables['teamname'] = response['team']['name']
         variables['username'] = response['self']['name']
-        userlist = response['users']
-        chanlist = response['channels']
         grouplist = response['groups']
         botlist = response['bots']
     else:
         log.write("Error: could not connect to rtm")
 
     curses.doupdate()
-
-    chanlist = refresh_channels(channel_panel)
-    userlist = refresh_users(user_panel)
 
     running = True
     while running:
@@ -236,17 +236,12 @@ def clack(screen):
                 elif cmd[0] == "join" and len(cmd) >= 2:
                     if cmd[1][0] != '#':
                         cmd[1] = '#' + cmd[1]
-                    response = slack.api_call("channels.join", 
-                            name=cmd[1])
+                    response = slack.api_call("channels.join", name=cmd[1])
 
-                    log.write("join " + cmd[1] + '\n' + 
-                            str(response) + '\n')
                     if(response['ok'] == True):
                         variables["channel"] = response['channel']['name']
-                        hresponse = slack.api_call("channels.history", 
-                                channel = response['channel']['id'])
-                        log.write("hist " + response['channel']['name'] 
-                                + '\n' + str(hresponse) + '\n')
+                        variables["chanid"] = response['channel']['id']
+                        hresponse = slack.api_call("channels.history", channel = response['channel']['id'])
                         if hresponse['ok'] == True:
                             msgs = hresponse['messages']
                 #leave channel
@@ -271,4 +266,3 @@ def clack(screen):
     return 0
 
 curses.wrapper(clack)
-exit(0)
