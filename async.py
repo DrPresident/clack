@@ -9,25 +9,25 @@ class Async:
         for t in self.threads:
             t.join()
 
+        for d in self.daemons:
+            d.join()
+
     def start_daemon(self, func, args=None):
         d = Thread(target=func,args=args)
+        self.daemons.append(d)
         d.setDaemon(True)
         d.start()
-        self.daemons.append(d)
 
-    def async_request(request_func, 
-            success_handler=None, 
-            error_handler=None, 
-            args=None):
+    def async_request(request_func, success_handler=None, error_handler=None, args=None):
 
         def runner():
             try:
                 response = request_func(*args if args else None)
-            except:
+                success_handler(response)
+            except Exception as e:
+                print(str(e))
                 error_handler(response)
-                return
 
-            success_handler(response)
 
         th = Thread(target=runner)
         self.threads.append(th)
